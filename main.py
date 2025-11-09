@@ -14,8 +14,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SERPAPI_KEY = "your_serpapi_key_here"
-BACKEND_BASE = "https://<your-service>.onrender.com"  # <-- Replace with your Render URL
+SERPAPI_KEY = "933af515d0770a50fc3cbe4a34ccb10e"
+BACKEND_BASE = "https://stylesafari-2.onrender.com"
 
 # ---------- Shopify fetch ----------
 def fetch_shopify_products(shop_domain, limit=50):
