@@ -37,7 +37,7 @@ def fetch_shopify_products(shop_domain, limit=50):
             "vendor": p.get("vendor"),
             "price": p.get("variants")[0].get("price") if p.get("variants") else None,
             "link": f"https://{shop_domain}/products/{p['handle']}",
-            "image": f"/image-proxy?url={img}"  # optional: use proxy
+            "image_url": f"/image-proxy?url={img}"  # optional: use proxy
         })
     return products
 
@@ -64,7 +64,7 @@ def serpapi_search(query, num=10):
             "brand": item.get("source"),
             "price": item.get("price"),
             "link": item.get("link"),
-            "image": f"/image-proxy?url={img}"  # optional: use proxy
+            "image_url": f"/image-proxy?url={img}"  # optional: use proxy
         })
     return results
 
