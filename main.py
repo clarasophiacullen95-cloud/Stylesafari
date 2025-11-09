@@ -7,7 +7,7 @@ import random
 
 app = FastAPI()
 
-# Allow Base44 to fetch
+# CORS for Base44
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,8 +18,8 @@ app.add_middleware(
 
 SERPAPI_KEY = "3080492d50bea8ac9618746457b2a934ec075eb1e54335a0eedc2068e7a5100e"
 
-# List of favorite retailer domains
-RETAILERS = [
+# Curated retailer list
+ALL_RETAILERS = [
     "zara.com",
     "hm.com",
     "sandro-paris.com",
@@ -30,8 +30,8 @@ RETAILERS = [
     "harrods.com"
 ]
 
-# Helper: fetch products from SerpAPI for a given retailer and query
 def fetch_products_from_retailer(query: str, retailer: str, num=5):
+    """Fetch products from a single retailer using SerpAPI"""
     search_query = f"site:{retailer} {query}" if query else f"site:{retailer}"
     params = {
         "engine": "google_shopping",
@@ -69,12 +69,14 @@ def fetch_products_from_retailer(query: str, retailer: str, num=5):
 def recommend(
     style: str = Query(None),
     lifestyle: str = Query(None),
-    budget: str = Query(None)
+    budget: str = Query(None),
+    brands: str = Query(None)
 ):
     """
-    Returns dynamic product recommendations from favorite retailers.
-    Filters via optional style/lifestyle/budget keywords.
-    Returns a randomized selection on every call.
+    Returns dynamic, AI-personalized product recommendations.
+    - Optional brands parameter: comma-separated brand domains
+    - Optional style, lifestyle, budget parameters
+    - Always returns shuffled results to show new content on each refresh/search
     """
     query_terms = []
     if style:
@@ -85,16 +87,17 @@ def recommend(
         query_terms.append(f"under ${budget}")
     query = " ".join(query_terms).strip()
 
+    # Determine which brands to use
+    selected_brands = [b.strip() for b in brands.split(",")] if brands else ALL_RETAILERS
+
     all_products = []
-    for retailer in RETAILERS:
-        products = fetch_products_from_retailer(query, retailer, num=3)
-        all_products.extend(products)
+    for retailer in selected_brands:
+        all_products.extend(fetch_products_from_retailer(query, retailer, num=3))
 
-    # Shuffle and pick top 10 for variability
+    # Shuffle for randomness / freshness
     random.shuffle(all_products)
-    selected_products = all_products[:10]
+    selected_products = all_products[:10]  # limit to top 10 for Base44
 
-    # Fallback if no products found
     if not selected_products:
         selected_products = [{
             "title": "No products found",
