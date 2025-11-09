@@ -16,7 +16,7 @@ app.add_middleware(
 
 # ---------- Config ----------
 BACKEND_BASE = "https://<stylesafari-2>.onrender.com"  
-SERPAPI_KEY = "933af515d0770a50fc3cbe4a34ccb10e" 
+SERPAPI_KEY = "d736bb9ef359933ebabea222f17e4eb8b06cc4866becb91f496ccbb0eb4ea1bd" 
 
 # ---------- SerpAPI fetch ----------
 def serpapi_search(query, num=20):
