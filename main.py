@@ -23,19 +23,21 @@ def fetch_shopify_products(shop_domain, limit=50):
     products = []
     for p in data.get("products", []):
         img = None
-        if p.get("images"):
-            img = p["images"][0]["src"]
-            if img.startswith("//"):
-                img = "https:" + img
-            elif img.startswith("/"):
-                img = f"https://{shop_domain}{img}"
+        if p.get("images") and len(p["images"]) > 0:
+            img = p["images"][0].get("src")
+            if img:
+                if img.startswith("//"):
+                    img = "https:" + img
+                elif img.startswith("/"):
+                    img = f"https://{shop_domain}{img}"
+        img = img or "https://via.placeholder.com/300x400?text=No+Image"
 
         products.append({
-            "title": p["title"],
+            "title": p.get("title"),
             "vendor": p.get("vendor"),
-            "price": p["variants"][0]["price"] if p.get("variants") else None,
+            "price": p.get("variants")[0].get("price") if p.get("variants") else None,
             "link": f"https://{shop_domain}/products/{p['handle']}",
-            "image": img or "https://via.placeholder.com/300x400?text=No+Image"
+            "image": f"/image-proxy?url={img}"  # optional: use proxy
         })
     return products
 
@@ -55,12 +57,14 @@ def serpapi_search(query, num=10):
         img = item.get("thumbnail") or (item.get("images")[0] if item.get("images") else None)
         if img and img.startswith("//"):
             img = "https:" + img
+        img = img or "https://via.placeholder.com/300x400?text=No+Image"
+
         results.append({
             "title": item.get("title"),
             "brand": item.get("source"),
             "price": item.get("price"),
             "link": item.get("link"),
-            "image": img or "https://via.placeholder.com/300x400?text=No+Image"
+            "image": f"/image-proxy?url={img}"  # optional: use proxy
         })
     return results
 
@@ -78,3 +82,11 @@ def recommend(style: str, lifestyle: str, budget: float):
 
     results = serp_results + shopify_products
     return {"results": results}
+    from fastapi.responses import StreamingResponse
+
+@app.get("/image-proxy")
+def image_proxy(url: str):
+    """Fetches the image and streams it through the backend to bypass hotlink restrictions."""
+    r = requests.get(url, stream=True)
+    content_type = r.headers.get("Content-Type", "image/jpeg")
+    return StreamingResponse(r.raw, media_type=content_type)
