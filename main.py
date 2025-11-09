@@ -2,6 +2,7 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import requests
+import urllib.parse
 
 app = FastAPI()
 
@@ -15,8 +16,8 @@ app.add_middleware(
 )
 
 # ---------- Config ----------
-BACKEND_BASE = "https://<stylesafari-2>.onrender.com"  
-SERPAPI_KEY = "d736bb9ef359933ebabea222f17e4eb8b06cc4866becb91f496ccbb0eb4ea1bd" 
+BACKEND_BASE = "https://stylesafari-2.onrender.com"  
+SERPAPI_KEY = "d736bb9ef359933ebabea222f17e4eb8b06cc4866becb91f496ccbb0eb4ea1bd"  
 
 # ---------- SerpAPI fetch ----------
 def serpapi_search(query, num=20):
@@ -46,11 +47,11 @@ def serpapi_search(query, num=20):
         link = item.get("product_link") or item.get("link") or "#"
 
         results.append({
-            "title": item.get("title", "Untitled Product"),
-            "brand": item.get("source", ""),
-            "price": item.get("price"),
+            "title": item.get("title") or "Untitled Product",
+            "brand": item.get("source") or "",
+            "price": item.get("price") or "",
             "link": link,
-            "image_url": f"{BACKEND_BASE}/image-proxy?url={img}"
+            "image_url": f"{BACKEND_BASE}/image-proxy?url={urllib.parse.quote(img)}"
         })
 
     return results
@@ -64,18 +65,26 @@ def recommend(
 ):
     """
     Returns AI-relevant products using SerpAPI.
-    Always returns results array to avoid Base44 load errors.
+    Always returns results array with safe fields for Base44.
     """
-    query = ""
-    if style:
-        query += f"{style} "
-    if lifestyle:
-        query += f"{lifestyle} "
+    query_parts = [style, lifestyle]
+    query = " ".join(filter(None, query_parts))
     if budget:
-        query += f"under ${budget}"
+        query += f" under ${budget}"
     query = query.strip() or "clothing"
 
     products = serpapi_search(query, num=20)
+
+    # Ensure safe fallback
+    if not products:
+        products = [{
+            "title": "No products found",
+            "brand": "",
+            "price": "",
+            "link": "#",
+            "image_url": "https://via.placeholder.com/300x400?text=No+Products"
+        }]
+
     return {"results": products}
 
 # ---------- Image proxy endpoint ----------
@@ -83,7 +92,8 @@ def recommend(
 def image_proxy(url: str):
     """Streams images to bypass hotlinking and ensure Base44 can render images."""
     try:
-        r = requests.get(url, stream=True, timeout=10)
+        decoded_url = urllib.parse.unquote(url)
+        r = requests.get(decoded_url, stream=True, timeout=10)
         r.raise_for_status()
         content_type = r.headers.get("Content-Type", "image/jpeg")
         return StreamingResponse(r.raw, media_type=content_type, headers={"Access-Control-Allow-Origin": "*"})
