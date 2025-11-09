@@ -2,12 +2,11 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import requests
-import urllib.parse
 import random
 
 app = FastAPI()
 
-# CORS for Base44
+# Allow Base44 to fetch
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,7 +30,7 @@ ALL_RETAILERS = [
 ]
 
 def fetch_products_from_retailer(query: str, retailer: str, num=5):
-    """Fetch products from a single retailer using SerpAPI"""
+    """Fetch products from SerpAPI for a given retailer and query"""
     search_query = f"site:{retailer} {query}" if query else f"site:{retailer}"
     params = {
         "engine": "google_shopping",
@@ -62,7 +61,7 @@ def fetch_products_from_retailer(query: str, retailer: str, num=5):
             "link": link,
             "image_url": img
         })
-
+    print(f"Query for {retailer}: {search_query} returned {len(results)} products")
     return results
 
 @app.get("/recommend")
@@ -73,38 +72,46 @@ def recommend(
     brands: str = Query(None)
 ):
     """
-    Returns dynamic, AI-personalized product recommendations.
-    - Optional brands parameter: comma-separated brand domains
-    - Optional style, lifestyle, budget parameters
-    - Always returns shuffled results to show new content on each refresh/search
+    Returns dynamic product recommendations:
+    - brands: comma-separated list of selected brands (default: all)
+    - style/lifestyle/budget are optional search filters
+    - Always returns products (shuffles to provide new content)
     """
     query_terms = []
     if style:
         query_terms.append(style)
     if lifestyle:
         query_terms.append(lifestyle)
-    if budget:
-        query_terms.append(f"under ${budget}")
     query = " ".join(query_terms).strip()
 
-    # Determine which brands to use
     selected_brands = [b.strip() for b in brands.split(",")] if brands else ALL_RETAILERS
 
     all_products = []
     for retailer in selected_brands:
         all_products.extend(fetch_products_from_retailer(query, retailer, num=3))
 
-    # Shuffle for randomness / freshness
-    random.shuffle(all_products)
-    selected_products = all_products[:10]  # limit to top 10 for Base44
+    # Apply budget filter server-side if provided
+    if budget:
+        filtered_products = []
+        for p in all_products:
+            try:
+                price_num = float("".join(c for c in p["price"] if c.isdigit() or c=="."))
+                if price_num <= float(budget):
+                    filtered_products.append(p)
+            except:
+                filtered_products.append(p)
+        all_products = filtered_products
 
+    # Shuffle and pick top 10
+    random.shuffle(all_products)
+    selected_products = all_products[:10]
+
+    # Fallback if nothing found: fetch one product from each brand
     if not selected_products:
-        selected_products = [{
-            "title": "No products found",
-            "brand": "",
-            "price": "",
-            "link": "#",
-            "image_url": "https://via.placeholder.com/300x400?text=No+Products"
-        }]
+        fallback_products = []
+        for retailer in selected_brands:
+            fallback_products.extend(fetch_products_from_retailer("", retailer, num=1))
+        random.shuffle(fallback_products)
+        selected_products = fallback_products[:10]
 
     return JSONResponse({"results": selected_products})
