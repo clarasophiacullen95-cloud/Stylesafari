@@ -1,9 +1,11 @@
-from fastapi import FastAPI
-import requests
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import requests
 
 app = FastAPI()
 
+# Allow Base44 frontend to access API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,15 +15,19 @@ app.add_middleware(
 )
 
 SERPAPI_KEY = "your_serpapi_key_here"
+BACKEND_BASE = "https://<your-service>.onrender.com"  # <-- Replace with your Render URL
 
+# ---------- Shopify fetch ----------
 def fetch_shopify_products(shop_domain, limit=50):
     url = f"https://{shop_domain}/products.json?limit={limit}"
     r = requests.get(url, headers={"User-Agent": "ai-shopper/1.0"})
     if r.status_code != 200:
         return []
+
     data = r.json()
     products = []
     for p in data.get("products", []):
+        # Image
         img = None
         if p.get("images") and len(p["images"]) > 0:
             img = p["images"][0].get("src")
@@ -32,16 +38,22 @@ def fetch_shopify_products(shop_domain, limit=50):
                     img = f"https://{shop_domain}{img}"
         img = img or "https://via.placeholder.com/300x400?text=No+Image"
 
+        # Link
+        handle = p.get("handle")
+        if not handle:
+            continue
+        link = f"https://{shop_domain}/products/{handle.strip()}"
+
         products.append({
-    "title": p.get("title"),
-    "vendor": p.get("vendor"),
-    "price": p.get("variants")[0].get("price") if p.get("variants") else None,
-    "link": f"https://{shop_domain}/products/{p['handle']}",  # <-- direct product link
-    "image_url": f"{backend_base}/image-proxy?url={img}"
+            "title": p.get("title"),
+            "vendor": p.get("vendor"),
+            "price": p.get("variants")[0].get("price") if p.get("variants") else None,
+            "link": link,
+            "image_url": f"{BACKEND_BASE}/image-proxy?url={img}"
         })
     return products
 
-
+# ---------- SerpAPI fetch ----------
 def serpapi_search(query, num=10):
     params = {
         "engine": "google_shopping",
@@ -53,41 +65,53 @@ def serpapi_search(query, num=10):
     r.raise_for_status()
     data = r.json()
     results = []
+
     for item in data.get("shopping_results", []):
         img = item.get("thumbnail") or (item.get("images")[0] if item.get("images") else None)
         if img and img.startswith("//"):
             img = "https:" + img
         img = img or "https://via.placeholder.com/300x400?text=No+Image"
 
+        # Prefer product_link if exists, else fallback to item link
+        link = item.get("product_link") or item.get("link") or None
+        if link and not link.startswith("http"):
+            link = None
+
         results.append({
-    "title": item.get("title"),
-    "brand": item.get("source"),
-    "price": item.get("price"),
-    # Prefer product-specific URL if available
-    "link": item.get("product_link") or item.get("link"),
-    "image_url": f"{backend_base}/image-proxy?url={img}"
+            "title": item.get("title"),
+            "brand": item.get("source"),
+            "price": item.get("price"),
+            "link": link,
+            "image_url": f"{BACKEND_BASE}/image-proxy?url={img}"
         })
     return results
 
-
+# ---------- Recommend endpoint ----------
 @app.get("/recommend")
-def recommend(style: str, lifestyle: str, budget: float):
-    # Example logic combining Shopify + SerpAPI results
+def recommend(style: str = Query(...), lifestyle: str = Query(...), budget: float = Query(...)):
     query = f"{style} {lifestyle} under ${budget}"
+
+    # Fetch SerpAPI results (best-effort links)
     serp_results = serpapi_search(query, num=5)
 
-    shopify_sources = ["reformation.myshopify.com", "farmrio.myshopify.com", "sandro-paris.myshopify.com"]
+    # Shopify sources (guaranteed valid product links)
+    shopify_sources = [
+        "reformation.myshopify.com",
+        "farmrio.myshopify.com",
+        "sandro-paris.myshopify.com"
+    ]
     shopify_products = []
     for shop in shopify_sources:
         shopify_products.extend(fetch_shopify_products(shop))
 
     results = serp_results + shopify_products
     return {"results": results}
-    from fastapi.responses import StreamingResponse
 
+# ---------- Image proxy endpoint ----------
 @app.get("/image-proxy")
 def image_proxy(url: str):
-    """Fetches the image and streams it through the backend to bypass hotlink restrictions."""
+    """Streams images via backend to bypass hotlinking."""
     r = requests.get(url, stream=True)
     content_type = r.headers.get("Content-Type", "image/jpeg")
-    return StreamingResponse(r.raw, media_type=content_type)
+    headers = {"Access-Control-Allow-Origin": "*"}
+    return StreamingResponse(r.raw, media_type=content_type, headers=headers)
