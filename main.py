@@ -33,11 +33,11 @@ def fetch_shopify_products(shop_domain, limit=50):
         img = img or "https://via.placeholder.com/300x400?text=No+Image"
 
         products.append({
-            "title": p.get("title"),
-            "vendor": p.get("vendor"),
-            "price": p.get("variants")[0].get("price") if p.get("variants") else None,
-            "link": f"https://{shop_domain}/products/{p['handle']}",
-            "image_url": f"/image-proxy?url={img}"  # optional: use proxy
+    "title": p.get("title"),
+    "vendor": p.get("vendor"),
+    "price": p.get("variants")[0].get("price") if p.get("variants") else None,
+    "link": f"https://{shop_domain}/products/{p['handle']}",  # <-- direct product link
+    "image_url": f"{backend_base}/image-proxy?url={img}"
         })
     return products
 
@@ -60,11 +60,12 @@ def serpapi_search(query, num=10):
         img = img or "https://via.placeholder.com/300x400?text=No+Image"
 
         results.append({
-            "title": item.get("title"),
-            "brand": item.get("source"),
-            "price": item.get("price"),
-            "link": item.get("link"),
-            "image_url": f"/image-proxy?url={img}"  # optional: use proxy
+    "title": item.get("title"),
+    "brand": item.get("source"),
+    "price": item.get("price"),
+    # Prefer product-specific URL if available
+    "link": item.get("product_link") or item.get("link"),
+    "image_url": f"{backend_base}/image-proxy?url={img}"
         })
     return results
 
